@@ -234,7 +234,7 @@ black_bmi_adjustment <- black_bmi_adjustment |>
 
 # build a linear regression model for each group, then find coefficients to transform unadjusted BMI
 # this gets round the fact that adjusted BMIs are only provided at 0.1kgm2 intervals
-# and provide adjustment for a limited range of BMIs
+# and only provide adjustment for a limited range of BMIs
 
 black_bmi_adjustment_males_r <- black_bmi_adjustment |> 
   filter(Gender == "Male",
@@ -279,7 +279,8 @@ black_bmi_adjustment_slopes <- c(coef(black_bmi_adjustment_males_r_mod)[2],
 black_bmi_adjustment_slopes <- unname(black_bmi_adjustment_slopes)
 
 # combine into a coefficient lookup
-black_bmi_adjustment_coefs <- tibble(Gender = c("Male", "Male", "Female", "Female"),
+black_bmi_adjustment_coefs <- tibble(Ethnicity_Hudda = rep("Black", times = 4),
+                                     Gender = c("Male", "Male", "Female", "Female"),
                                      School_Year = c("Reception", "Year 6", "Reception", "Year 6"),
                                      Intercept = black_bmi_adjustment_intercepts,
                                      Slope = black_bmi_adjustment_slopes)
@@ -290,7 +291,32 @@ black_bmi_adjustment_coefs <- tibble(Gender = c("Male", "Male", "Female", "Femal
 # adjustments for South Asian children are constant across age groups and BMI
 # so slope is 1 and the intercept is the only thing that changes between male and female
 
-south_asian_adjustment_coefs <- tibble(Gender = c("Male", "Male", "Female", "Female"),
+south_asian_adjustment_coefs <- tibble(Ethnicity_Hudda = rep("South Asian", times = 4),
+                                       Gender = c("Male", "Male", "Female", "Female"),
                                        School_Year = c("Reception", "Year 6", "Reception", "Year 6"),
                                        Intercept = c(1.12, 1.12, 1.07, 1.07),
                                        Slope = rep(1, times = 4))
+
+
+# Create BMI adjustment table for other ethnicities -----------------------
+
+# other ethnicity BMIs are not adjusted
+# but need a table which states this
+
+other_ethnicity_adjustment_coefs <- tibble(Ethnicity_Hudda = c(rep("White", times = 4), rep("Mixed and Other", times = 4), rep("Unknown", times = 4)),
+                                           Gender = rep(c("Male", "Male", "Female", "Female"), times = 3),
+                                           School_Year = rep(c("Reception", "Year 6", "Reception", "Year 6"), times = 3),
+                                           Intercept = rep(0, times = 12),
+                                           Slope = rep(1, times = 12))
+
+
+# Combine BMI adjustment tables and merge with main df -------------------------------------------
+
+adjustment_coefs <- rbind(black_bmi_adjustment_coefs,
+                          south_asian_adjustment_coefs) |> 
+  rbind(other_ethnicity_adjustment_coefs)
+
+ncmp_data <- ncmp_data |> 
+  left_join(adjustment_coefs,
+            by = join_by(Ethnicity_Hudda, Gender, School_Year)) |> 
+  mutate(BMI_Score_Adjusted = Slope * BMI_Score + Intercept)
