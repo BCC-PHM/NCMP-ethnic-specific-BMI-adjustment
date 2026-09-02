@@ -89,10 +89,10 @@ ncmp_data <- ncmp_data |>
 
 # change values in some fields
 ncmp_data <- ncmp_data |> 
-  mutate(Gender = case_when(Gender == "M" ~ "Male",
-                            Gender == "F" ~ "Female"),
-         School_Year = case_when(School_Year == "Year 0" ~ "Reception",
+  mutate(School_Year = case_when(School_Year == "Year 0" ~ "Reception",
                                  School_Year == "Year 6" ~ "Year 6"),
+         # Gender = case_when(Gender == "M" ~ "Male",
+         #                    Gender == "F" ~ "Female"),
          BMI_Category = case_when(BMI_Category == "underweight" ~ "Underweight",
                                   BMI_Category == "healthy weight" ~ "Healthy Weight",
                                   BMI_Category == "overweight" ~ "Overweight",
@@ -128,87 +128,3 @@ ncmp_data <- ncmp_data |>
                                     levels = c("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")),
          IDACI_2025_Quintile = factor(IDACI_2025_Quintile,
                                       levels = c("1", "2", "3", "4", "5")))
-
-# add short stature column based on height_p
-# need to calculate height_p using height_z for 2013/14 and 2014/15
-ncmp_data <- ncmp_data |>
-  mutate(Height_p = case_when(Year == "2013/2014" ~ pnorm(Height_z),
-                              Year == "2014/2015" ~ pnorm(Height_z),
-                              .default = Height_p),
-         short_stature = case_when(Height_p <= 0.02 ~ TRUE,
-                                   .default = FALSE))
-
-
-# add locality based on constituency
-ncmp_data <- ncmp_data |> 
-  mutate(Locality = case_when(PCON24CD == "E14001535" ~ "North", # Sutton Coldfield
-                              PCON24CD == "E14001093" ~ "North", # Erdington
-                              PCON24CD == "E14001098" ~ "West", # Perry Barr
-                              PCON24CD == "E14001096" ~ "West", # Ladywood
-                              PCON24CD == "E14001095" ~ "East", # Hodge Hill
-                              PCON24CD == "E14001100" ~ "East", # Yardley
-                              PCON24CD == "E14001092" ~ "South", # Edgbaston
-                              PCON24CD == "E14001097" ~ "South", # Northfield
-                              PCON24CD == "E14001094" ~ "Central", # Hall Green
-                              PCON24CD == "E14001099" ~ "Central")) # Selly Oak
-
-# put years into a vector
-years <- unique(ncmp_data$Year)
-
-# remove 2020/2021
-years <- years[!years %in% c("2020/2021")]
-
-# create df with three years of data (first three years i.e. oldest)
-ncmp_data_period_1 <- ncmp_data |> 
-  filter(Year == years[1]|Year == years[2]|Year == years[3]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[1]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[3])))
-
-# same again but with next three year period
-ncmp_data_period_2 <- ncmp_data |> 
-  filter(Year == years[2]|Year == years[3]|Year == years[4]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[2]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[4])))
-
-# and so on
-ncmp_data_period_3 <- ncmp_data |> 
-  filter(Year == years[3]|Year == years[4]|Year == years[5]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[3]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[5])))
-
-ncmp_data_period_4 <- ncmp_data |> 
-  filter(Year == years[4]|Year == years[5]|Year == years[6]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[4]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[6])))
-
-ncmp_data_period_5 <- ncmp_data |> 
-  filter(Year == years[5]|Year == years[6]|Year == years[7]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[5]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[7])))
-
-ncmp_data_period_6 <- ncmp_data |> 
-  filter(Year == years[6]|Year == years[7]|Year == years[8]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[6]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[8])))
-
-ncmp_data_period_7 <- ncmp_data |> 
-  filter(Year == years[7]|Year == years[8]|Year == years[9]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[7]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[9])))
-
-# most recent period
-ncmp_data_period_8 <- ncmp_data |> 
-  filter(Year == years[8]|Year == years[9]|Year == years[10]) |> 
-  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[8]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[10])))
-
-# bind all into one df
-ncmp_data_3_years_combined <- bind_rows(ncmp_data_period_1,
-                                        ncmp_data_period_2,
-                                        ncmp_data_period_3,
-                                        ncmp_data_period_4,
-                                        ncmp_data_period_5,
-                                        ncmp_data_period_6,
-                                        ncmp_data_period_7,
-                                        ncmp_data_period_8)
-
-periods <- unique(ncmp_data_3_years_combined$Year)
-
-# get a list of periods in format 20XX-XX
-# where most recent period is periods[8]
-periods_short <- sub("/([A-Za-z0-9]+( [A-Za-z0-9]+)+)/", "-", unique(ncmp_data_3_years_combined$Year))
-
-
-
