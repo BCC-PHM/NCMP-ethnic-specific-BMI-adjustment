@@ -1,0 +1,362 @@
+---
+title: "NCMP Ethnic-specific BMI Adjustment Report"
+date: last-modified
+date-format: "MMM YYYY"
+format: 
+  html:
+    grid:
+      body-width: 900px
+    embed-resources: true
+toc: true
+editor: source
+execute: 
+  echo: false
+  warning: false
+---
+
+```{r setup}
+library(tidyverse)
+library(readxl)
+library(plotly)
+library(PHEindicatormethods)
+library(bcctheme)
+
+BMI_Category_Levels = c("Underweight", "Healthy Weight", "Overweight", "Obese")
+bcc_colours <- unname(bcc_cols())
+BMI_Category_colours <- c("Underweight" = bcc_colours[6],
+                          "Healthy Weight" = bcc_colours[4],
+                          "Overweight" = bcc_colours[5],
+                          "Obese" = bcc_colours[1]) 
+
+# function to round an integer to nearest 5
+# for data suppression purposes: https://digital.nhs.uk/data-and-information/find-data-and-publications/statement-of-administrative-sources/methodological-changes/changes-to-the-national-child-measurement-programme-2019-20-publication-content-and-disclosure-control-methodology#simple-calculations
+round_5 <- function(x) {
+  return(round(x / 5) * 5)
+}
+
+# function to summarise a patient level dataset by the columns given
+# .by_count contains columns to summarise by
+# .by_denom contains columns to create denominator
+# returns a dataframe containing count, denominator and percentage with 95% CIs
+# optionally include overweight/obese category (for BMI_Category data only)
+# optionally recalculate percentage using count and denom rounded to nearest 5
+ncmp_summarise <- function(.data, 
+                           .by_count, 
+                           .by_denom, 
+                           .include_oo,
+                           .round_5){
+  if(.include_oo == TRUE){
+    temp <- .data |> 
+      dplyr::summarise(count = n(), .by = {{ .by_count }}) |> 
+      dplyr::mutate(denominator = sum(count), .by = {{ .by_denom }})
+    
+    temp_oo <- .data |> 
+      dplyr::mutate(BMI_Category = dplyr::case_when(BMI_Category == "Obese" ~ "Overweight/Obese",
+                                      BMI_Category == "Overweight" ~ "Overweight/Obese",
+                                      .default = BMI_Category)) |> 
+      dplyr::summarise(count = n(), .by = {{ .by_count }}) |> 
+      dplyr::mutate(denominator = sum(count), .by = {{ .by_denom }}) |> 
+      dplyr::filter(BMI_Category == "Overweight/Obese")
+    
+    temp <- rbind(temp, temp_oo)
+    
+    if(.round_5 == TRUE){
+      temp <- PHEindicatormethods::phe_proportion(temp,
+                                                  x = count,
+                                                  n = denominator,
+                                                  multiplier = 100) |> 
+        dplyr::mutate(value = (round_5(count)/round_5(denominator))*100) |> 
+        dplyr::rename(pct = value,
+               lower_ci = lowercl,
+               upper_ci = uppercl)
+    }
+    
+    if(.round_5 == FALSE){
+      temp <- PHEindicatormethods::phe_proportion(temp,
+                                                  x = count,
+                                                  n = denominator,
+                                                  multiplier = 100) |> 
+        dplyr::rename(pct = value,
+               lower_ci = lowercl,
+               upper_ci = uppercl)
+    }
+  }
+  
+  if(.include_oo == FALSE){
+    temp <- .data |> 
+      dplyr::summarise(count = n(), .by = {{ .by_count }}) |> 
+      dplyr::mutate(denominator = sum(count), .by = {{ .by_denom }})
+    
+    if(.round_5 == TRUE){
+      temp <- PHEindicatormethods::phe_proportion(temp,
+                                                  x = count,
+                                                  n = denominator,
+                                                  multiplier = 100) |> 
+        dplyr::mutate(value = (round_5(count)/round_5(denominator))*100) |> 
+        dplyr::rename(pct = value,
+               lower_ci = lowercl,
+               upper_ci = uppercl)
+    }
+    
+    if(.round_5 == FALSE){
+      temp <- PHEindicatormethods::phe_proportion(temp,
+                                                  x = count,
+                                                  n = denominator,
+                                                  multiplier = 100) |> 
+        dplyr::rename(pct = value,
+               lower_ci = lowercl,
+               upper_ci = uppercl)
+    }
+  }
+  temp
+}
+
+# function to generate an interactive sankey diagram showing movement between BMI classes
+# .Ethnicity_Hudda is ethnicity to plot
+#. School_Year is school year to plot
+bmi_adj_sankey <- function(.data,
+                           .Ethnicity_Hudda,
+                           .School_Year){
+  
+  sankey_links <- .data |>
+    dplyr::filter(Ethnicity_Hudda == .Ethnicity_Hudda,
+           School_Year == .School_Year) |> 
+    dplyr::select(BMI_Category, BMI_Category_Adjusted, count, pct, lower_ci, upper_ci) |>
+    dplyr::rename(source = BMI_Category,
+           target = BMI_Category_Adjusted,
+           value  = count) |>
+    dplyr::mutate(
+      linkgroup = source,
+      linklabel = dplyr::case_when(
+        source == "Underweight"     & target == "Underweight"     ~ "Remained underweight",
+        source == "Healthy Weight"  & target == "Healthy Weight"  ~ "Remained healthy weight",
+        source == "Overweight"      & target == "Overweight"      ~ "Remained overweight",
+        source == "Obese"           & target == "Obese"           ~ "Remained obese",
+        .default = paste0("Moved to ", str_to_lower(target))),
+      source = paste0(source, "_unadj"),
+      target = paste0(target, "_adj"),
+      colour = dplyr::case_when(
+        linkgroup == "Underweight"    ~ paste0(BMI_Category_colours["Underweight"], "99"),
+        linkgroup == "Healthy Weight" ~ paste0(BMI_Category_colours["Healthy Weight"], "99"),
+        linkgroup == "Overweight"     ~ paste0(BMI_Category_colours["Overweight"], "99"),
+        linkgroup == "Obese"          ~ paste0(BMI_Category_colours["Obese"], "99"))) |>
+    dplyr::filter(value > 7)
+  
+  # Explicit node order (left then right)
+  ordered_nodes <- c("Underweight_unadj", "Healthy Weight_unadj", "Overweight_unadj", "Obese_unadj",
+                     "Underweight_adj", "Healthy Weight_adj", "Overweight_adj", "Obese_adj")
+  
+  # Build nodes with consistent labels and colours
+  sankey_nodes <- tibble::tibble(name = ordered_nodes,
+                         # category without suffix, for color mapping
+                         nodegroup = sub("_(unadj|adj)$", "", ordered_nodes),
+                         colour = dplyr::case_when(
+                           nodegroup == "Underweight"    ~ BMI_Category_colours["Underweight"],
+                           nodegroup == "Healthy Weight" ~ BMI_Category_colours["Healthy Weight"],
+                           nodegroup == "Overweight"     ~ BMI_Category_colours["Overweight"],
+                           nodegroup == "Obese"          ~ BMI_Category_colours["Obese"]))
+  
+  # Labels for nodes
+  node_labels <- sub("_(unadj|adj)$", "", sankey_nodes$name)
+  
+  # Map links to node indices based on explicit node order
+  sankey_links$IDsource <- match(sankey_links$source, sankey_nodes$name) - 1
+  sankey_links$IDtarget <- match(sankey_links$target, sankey_nodes$name) - 1
+  
+  # Plot
+  plotly::plot_ly(type = "sankey",
+          arrangement = "snap",
+          orientation = "h",
+          node = list(label = node_labels,          # length 8; no recycling
+                      color = sankey_nodes$colour,
+                      pad = 15,
+                      thickness = 20,
+                      line = list(color = "black", width = 0.5),
+                      hoverinfo = "none"),
+          link = list(source = sankey_links$IDsource,
+                      target = sankey_links$IDtarget,
+                      value  = sankey_links$value,
+                      label  = sankey_links$linklabel,
+                      color  = sankey_links$colour,
+                      customdata = sprintf("%.1f%% (%.1f%% - %.1f%%)", sankey_links$pct, sankey_links$lower_ci, sankey_links$upper_ci),
+                      hovertemplate = paste0("%{label}<br>%{customdata}<extra></extra>"))) |> 
+    add_annotations(x = 0, y = 1.01, xref = "paper", yref = "paper",
+                    text = "Unadjusted BMI score", showarrow = FALSE,
+                    xanchor = "left", yanchor = "bottom",
+                    font = list(size = 16, color = "black")) |> 
+    add_annotations(x = 1, y = 1.01, xref = "paper", yref = "paper",
+                    text = "Adjusted BMI score", showarrow = FALSE,
+                    xanchor = "right", yanchor = "bottom",
+                    font = list(size = 16, color = "black")) |> 
+    layout(margin = list(t = 40)) |> 
+    config(modeBarButtonsToRemove = c('zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'lasso2d', 'autoScale', 'resetScale'))
+}
+```
+
+```{r data_import}
+ncmp_data <- read_excel("../data/ncmp_data_adjusted_bmi.xlsx") |> 
+  rename(BMI_z_Adjusted = SDS_BMI) |> 
+  mutate(BMI_p_Adjusted = pnorm(BMI_z_Adjusted),
+         BMI_Category_Adjusted = case_when(BMI_p_Adjusted >= 0.95 ~ "Obese",
+                                           BMI_p_Adjusted >= 0.85 ~ "Overweight",
+                                           BMI_p_Adjusted > 0.02 ~ "Healthy Weight",
+                                           BMI_p_Adjusted <= 0.02 ~ "Underweight"))
+
+# Group into three year combined periods ----------------------------------
+
+# put years into a vector
+years <- unique(ncmp_data$Year)
+
+# remove 2020/2021
+years <- years[!years %in% c("2020/2021")]
+
+# create df with three years of data (first three years i.e. oldest)
+ncmp_data_period_1 <- ncmp_data |> 
+  filter(Year == years[1]|Year == years[2]|Year == years[3]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[1]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[3])))
+
+# same again but with next three year period
+ncmp_data_period_2 <- ncmp_data |> 
+  filter(Year == years[2]|Year == years[3]|Year == years[4]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[2]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[4])))
+
+# and so on
+ncmp_data_period_3 <- ncmp_data |> 
+  filter(Year == years[3]|Year == years[4]|Year == years[5]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[3]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[5])))
+
+ncmp_data_period_4 <- ncmp_data |> 
+  filter(Year == years[4]|Year == years[5]|Year == years[6]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[4]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[6])))
+
+ncmp_data_period_5 <- ncmp_data |> 
+  filter(Year == years[5]|Year == years[6]|Year == years[7]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[5]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[7])))
+
+ncmp_data_period_6 <- ncmp_data |> 
+  filter(Year == years[6]|Year == years[7]|Year == years[8]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[6]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[8])))
+
+ncmp_data_period_7 <- ncmp_data |> 
+  filter(Year == years[7]|Year == years[8]|Year == years[9]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[7]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[9])))
+
+# most recent period
+ncmp_data_period_8 <- ncmp_data |> 
+  filter(Year == years[8]|Year == years[9]|Year == years[10]) |> 
+  mutate(Year = paste0(sub("(20)(.*?)(20)", "\\1\\2", years[8]), " to ", sub("(20)(.*?)(20)", "\\1\\2", years[10])))
+
+# bind all into one df
+ncmp_data_3_years_combined <- bind_rows(ncmp_data_period_1,
+                                        ncmp_data_period_2,
+                                        ncmp_data_period_3,
+                                        ncmp_data_period_4,
+                                        ncmp_data_period_5,
+                                        ncmp_data_period_6,
+                                        ncmp_data_period_7,
+                                        ncmp_data_period_8)
+
+periods <- unique(ncmp_data_3_years_combined$Year)
+
+# get a list of periods in format 20XX-XX
+# where most recent period is periods[8]
+periods_short <- sub("/([A-Za-z0-9]+( [A-Za-z0-9]+)+)/", "-", unique(ncmp_data_3_years_combined$Year))
+```
+
+```{r create_dfs}
+# summarise unadjusted BMI categories by ethnicity
+
+bmi_category_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+                                                  .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category),
+                                                  .by_denom = c(School_Year, Ethnicity_Hudda),
+                                                  .include_oo = T,
+                                                  .round_5 = T) |> 
+  mutate(bmi_adj = "Unadjusted")
+
+# summarise adjusted BMI categories by ethnicity
+
+bmi_category_adj_by_ethnicity <- ncmp_data_period_8 |> 
+  select(-BMI_Category) |> 
+  rename(BMI_Category = BMI_Category_Adjusted) |> 
+  ncmp_summarise(.by_count = c(School_Year, Ethnicity_Hudda, BMI_Category),
+                 .by_denom = c(School_Year, Ethnicity_Hudda),
+                 .include_oo = T,
+                 .round_5 = T) |> 
+  mutate(bmi_adj = "Adjusted")
+
+# combine into one table
+
+bmi_category_by_ethnicity = rbind(bmi_category_adj_by_ethnicity,
+                                  bmi_category_unadj_by_ethnicity)
+
+# calculate proportion of children within ethnicity/school year who fit into each BMI category/adjusted category combo
+bmi_category_change_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+               .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category, BMI_Category_Adjusted),
+               .by_denom = c(School_Year, Ethnicity_Hudda),
+               .include_oo = F,
+               .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category == BMI_Category_Adjusted ~ F,
+                                     .default = T))
+
+# add cols with number of "steps" and direction of change
+bmi_category_change_by_ethnicity <- bmi_category_change_by_ethnicity |> 
+  mutate(BMI_Category = factor(BMI_Category, levels = BMI_Category_Levels, ordered = T),
+         BMI_Category_Adjusted = factor(BMI_Category_Adjusted, levels = BMI_Category_Levels, ordered = T),
+         change_steps = as.numeric(unclass(BMI_Category_Adjusted) - unclass(BMI_Category)),
+         change_direction = case_when(change_steps < 0 ~ "Lighter",
+                                      change_steps > 0 ~ "Heavier",
+                                      change_steps == 0 ~ "No change"))
+
+# summarise to get % of all children in each ethnicity/school year who changed BMI category
+bmi_category_change_by_ethnicity_summary <- bmi_category_change_by_ethnicity |> 
+  filter(category_change == T) |> 
+  group_by(School_Year, Ethnicity_Hudda) |> 
+  summarise(count = sum(count),
+            denominator = mean(denominator)) |> 
+  ungroup() |> 
+  PHEindicatormethods::phe_proportion(x = count,
+                                      n = denominator,
+                                      multiplier = 100)
+
+# calculate proportion of children within ethncicity/school year/bmi category who fit into each adjusted category
+adjusted_bmi_by_ethnicity_bmi_category <- ncmp_summarise(ncmp_data_period_8,
+                                                         .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category, BMI_Category_Adjusted),
+                                                         .by_denom = c(School_Year, Ethnicity_Hudda, BMI_Category),
+                                                         .include_oo = F,
+                                                         .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category == BMI_Category_Adjusted ~ F,
+                                     .default = T))
+```
+
+# Sankey
+
+::: panel-tabset
+## Black, Reception
+
+```{r sankey_black_r}
+bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+               .Ethnicity_Hudda = "Black",
+               .School_Year = "Reception")
+```
+
+## Black, Year 6
+```{r sankey_black_y6}
+bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+               .Ethnicity_Hudda = "Black",
+               .School_Year = "Year 6")
+```
+
+## South Asian, Reception
+```{r sankey_south_asian_r}
+bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+               .Ethnicity_Hudda = "South Asian",
+               .School_Year = "Reception")
+```
+
+## South Asian, Reception
+```{r sankey_south_asian_y6}
+bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+               .Ethnicity_Hudda = "South Asian",
+               .School_Year = "Year 6")
+```
+:::
