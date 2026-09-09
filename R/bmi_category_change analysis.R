@@ -1,8 +1,14 @@
 library(tidyverse)
 library(PHEindicatormethods)
 library(plotly)
+library(bcctheme)
 
-BMI_Category_Levels = c("Underweight", "Healthy Weight", "Overweight", "Obese")
+BMI_Category_Levels <- c("Underweight", "Healthy Weight", "Overweight", "Obese")
+bcc_colours <- unname(bcc_cols())
+BMI_Category_colours <- c("Underweight" = bcc_colours[6],
+                          "Healthy Weight" = bcc_colours[4],
+                          "Overweight" = bcc_colours[5],
+                          "Obese" = bcc_colours[1]) 
 
 # summarise unadjusted BMI categories by ethnicity
 
@@ -28,8 +34,6 @@ bmi_category_adj_by_ethnicity <- ncmp_data_period_8 |>
 
 bmi_category_by_ethnicity = rbind(bmi_category_adj_by_ethnicity,
                                   bmi_category_unadj_by_ethnicity)
-
-bcc_colours <- c("#D00070", "#FFAD00", "#75BC22", "#84329B", "#00A9E0", "#3c3c3b")
 
 bmi_category_by_ethnicity |>
   filter(School_Year == "Year 6",
@@ -127,7 +131,7 @@ adjusted_bmi_by_ethnicity_bmi_category <- ncmp_summarise(ncmp_data_period_8,
 # sankey chart
 sankey_links <- adjusted_bmi_by_ethnicity_bmi_category |>
   filter(Ethnicity_Hudda == "Black",
-         School_Year == "Reception") |> 
+         School_Year == "Year 6") |> 
   select(BMI_Category, BMI_Category_Adjusted, count, pct, lower_ci, upper_ci) |>
   rename(source = BMI_Category,
          target = BMI_Category_Adjusted,
@@ -143,10 +147,10 @@ sankey_links <- adjusted_bmi_by_ethnicity_bmi_category |>
     source = paste0(source, "_unadj"),
     target = paste0(target, "_adj"),
     colour = case_when(
-      linkgroup == "Underweight"    ~ "#00A9E099",
-      linkgroup == "Healthy Weight" ~ "#FFAD0099",
-      linkgroup == "Overweight"     ~ "#75BC2299",
-      linkgroup == "Obese"          ~ "#84329B99")) |>
+      linkgroup == "Underweight"    ~ paste0(BMI_Category_colours["Underweight"], "99"),
+      linkgroup == "Healthy Weight" ~ paste0(BMI_Category_colours["Healthy Weight"], "99"),
+      linkgroup == "Overweight"     ~ paste0(BMI_Category_colours["Overweight"], "99"),
+      linkgroup == "Obese"          ~ paste0(BMI_Category_colours["Obese"], "99"))) |>
   filter(value > 7)
 
 # Explicit node order (left then right)
@@ -158,10 +162,10 @@ sankey_nodes <- tibble(name = ordered_nodes,
                        # category without suffix, for color mapping
                        nodegroup = sub("_(unadj|adj)$", "", ordered_nodes),
                        colour = case_when(
-                         nodegroup == "Underweight"    ~ "#00A9E0",
-                         nodegroup == "Healthy Weight" ~ "#FFAD00",
-                         nodegroup == "Overweight"     ~ "#75BC22",
-                         nodegroup == "Obese"          ~ "#84329B"))
+                         nodegroup == "Underweight"    ~ BMI_Category_colours["Underweight"],
+                         nodegroup == "Healthy Weight" ~ BMI_Category_colours["Healthy Weight"],
+                         nodegroup == "Overweight"     ~ BMI_Category_colours["Overweight"],
+                         nodegroup == "Obese"          ~ BMI_Category_colours["Obese"]))
 
 # Labels for nodes
 node_labels <- sub("_(unadj|adj)$", "", sankey_nodes$name)
@@ -170,9 +174,9 @@ node_labels <- sub("_(unadj|adj)$", "", sankey_nodes$name)
 sankey_links$IDsource <- match(sankey_links$source, sankey_nodes$name) - 1
 sankey_links$IDtarget <- match(sankey_links$target, sankey_nodes$name) - 1
 
-
 # Plot
 plot_ly(type = "sankey",
+        arrangement = "snap",
         orientation = "h",
         node = list(label = node_labels,          # length 8; no recycling
                     color = sankey_nodes$colour,
