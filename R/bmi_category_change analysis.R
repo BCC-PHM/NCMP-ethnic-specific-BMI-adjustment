@@ -10,6 +10,9 @@ BMI_Category_colours <- c("Underweight" = bcc_colours[6],
                           "Overweight" = bcc_colours[5],
                           "Obese" = bcc_colours[1]) 
 
+
+# Find prevalences before and after adjustment (population) ----------------------------
+
 # summarise unadjusted BMI categories by ethnicity
 
 bmi_category_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
@@ -84,6 +87,36 @@ bmi_category_by_ethnicity |>
   View()
 
 
+# Find prevalences before and after adjustment (clinical) -----------------
+
+# repeat for clinical categories
+
+# summarise unadjusted BMI categories by ethnicity
+
+bmi_category_clinical_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+                                                           .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                                                           .by_denom = c(School_Year, Ethnicity_Hudda),
+                                                           .include_oo = F,
+                                                           .round_5 = T) |> 
+  mutate(bmi_adj = "Unadjusted")
+
+# summarise adjusted BMI categories by ethnicity
+
+bmi_category_clinical_adj_by_ethnicity <- ncmp_data_period_8 |> 
+  ncmp_summarise(.by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                 .by_denom = c(School_Year, Ethnicity_Hudda),
+                 .include_oo = F,
+                 .round_5 = T) |> 
+  mutate(bmi_adj = "Adjusted")
+
+# combine into one table
+
+bmi_category_clinical_by_ethnicity = rbind(bmi_category_clinical_adj_by_ethnicity,
+                                           bmi_category_clinical_unadj_by_ethnicity)
+
+
+# Find % children changed category (population) ---------------------------
+
 # calculate proportion of children within ethnicity/school year who fit into each BMI category/adjusted category combo
 bmi_category_change_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
                .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category, BMI_Category_Adjusted),
@@ -113,11 +146,6 @@ bmi_category_change_by_ethnicity_summary <- bmi_category_change_by_ethnicity |>
                                       n = denominator,
                                       multiplier = 100)
 
-
-
-
-
-
 # calculate proportion of children within ethncicity/school year/bmi category who fit into each adjusted category
 adjusted_bmi_by_ethnicity_bmi_category <- ncmp_summarise(ncmp_data_period_8,
                                                          .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category, BMI_Category_Adjusted),
@@ -127,6 +155,49 @@ adjusted_bmi_by_ethnicity_bmi_category <- ncmp_summarise(ncmp_data_period_8,
   mutate(category_change = case_when(BMI_Category == BMI_Category_Adjusted ~ F,
                                      .default = T))
 
+# Find % children changed category (clinical) -----------------------------
+
+
+# repeat for clinical category
+# calculate proportion of children within ethnicity/school year who fit into each BMI category/adjusted category combo
+bmi_category_clinical_change_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+                                                   .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical, BMI_Category_Clinical_Adjusted),
+                                                   .by_denom = c(School_Year, Ethnicity_Hudda),
+                                                   .include_oo = F,
+                                                   .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category_Clinical == BMI_Category_Clinical_Adjusted ~ F,
+                                     .default = T))
+
+# add cols with number of "steps" and direction of change
+bmi_category_clinical_change_by_ethnicity <- bmi_category_clinical_change_by_ethnicity |> 
+  mutate(BMI_Category_Clinical = factor(BMI_Category_Clinical, levels = BMI_Category_Levels, ordered = T),
+         BMI_Category_Clinical_Adjusted = factor(BMI_Category_Clinical_Adjusted, levels = BMI_Category_Levels, ordered = T),
+         change_steps = as.numeric(unclass(BMI_Category_Clinical_Adjusted) - unclass(BMI_Category_Clinical)),
+         change_direction = case_when(change_steps < 0 ~ "Lighter",
+                                      change_steps > 0 ~ "Heavier",
+                                      change_steps == 0 ~ "No change"))
+
+# summarise to get % of all children in each ethnicity/school year who changed BMI category
+bmi_category_clinical_change_by_ethnicity_summary <- bmi_category_clinical_change_by_ethnicity |> 
+  filter(category_change == T) |> 
+  group_by(School_Year, Ethnicity_Hudda) |> 
+  summarise(count = sum(count),
+            denominator = mean(denominator)) |> 
+  ungroup() |> 
+  PHEindicatormethods::phe_proportion(x = count,
+                                      n = denominator,
+                                      multiplier = 100)
+
+# calculate proportion of children within ethncicity/school year/bmi category who fit into each adjusted category
+adjusted_bmi_by_ethnicity_bmi_category_clinical <- ncmp_summarise(ncmp_data_period_8,
+                                                         .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical, BMI_Category_Clinical_Adjusted),
+                                                         .by_denom = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                                                         .include_oo = F,
+                                                         .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category_Clinical == BMI_Category_Clinical_Adjusted ~ F,
+                                     .default = T))
+
+# Sankey chart ------------------------------------------------------------
 
 # sankey chart
 sankey_links <- adjusted_bmi_by_ethnicity_bmi_category |>

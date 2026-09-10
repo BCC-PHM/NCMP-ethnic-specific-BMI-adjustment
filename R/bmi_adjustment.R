@@ -121,6 +121,7 @@ write_xlsx(ncmp_data,
            path = "data/ncmp_data_adjusted_bmi.xlsx")
 
 # reimport with z scores and calculate p scores and weight categories
+# but use bmi_z for clinical categories as more accurate
 
 ncmp_data <- read_excel("data/ncmp_data_adjusted_bmi.xlsx") |> 
   rename(BMI_z_Adjusted = SDS_BMI) |> 
@@ -128,7 +129,11 @@ ncmp_data <- read_excel("data/ncmp_data_adjusted_bmi.xlsx") |>
          BMI_Category_Adjusted = case_when(BMI_p_Adjusted >= 0.95 ~ "Obese",
                                            BMI_p_Adjusted >= 0.85 ~ "Overweight",
                                            BMI_p_Adjusted > 0.02 ~ "Healthy Weight",
-                                           BMI_p_Adjusted <= 0.02 ~ "Underweight"))
+                                           BMI_p_Adjusted <= 0.02 ~ "Underweight"),
+         BMI_Category_Clinical_Adjusted = case_when(BMI_z_Adjusted >= 6/3 ~ "Obese",
+                                                    BMI_z_Adjusted >= 4/3 ~ "Overweight",
+                                                    BMI_z_Adjusted > -6/3 ~ "Healthy Weight",
+                                                    BMI_z_Adjusted <= -6/3 ~ "Underweight"))
 
 # Group into three year combined periods ----------------------------------
 
