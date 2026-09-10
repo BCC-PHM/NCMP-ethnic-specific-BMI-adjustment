@@ -200,7 +200,11 @@ ncmp_data <- read_excel("../data/ncmp_data_adjusted_bmi.xlsx") |>
          BMI_Category_Adjusted = case_when(BMI_p_Adjusted >= 0.95 ~ "Obese",
                                            BMI_p_Adjusted >= 0.85 ~ "Overweight",
                                            BMI_p_Adjusted > 0.02 ~ "Healthy Weight",
-                                           BMI_p_Adjusted <= 0.02 ~ "Underweight"))
+                                           BMI_p_Adjusted <= 0.02 ~ "Underweight"),
+         BMI_Category_Clinical_Adjusted = case_when(BMI_z_Adjusted >= 6/3 ~ "Obese",
+                                                    BMI_z_Adjusted >= 4/3 ~ "Overweight",
+                                                    BMI_z_Adjusted > -6/3 ~ "Healthy Weight",
+                                                    BMI_z_Adjusted <= -6/3 ~ "Underweight"))
 
 # Group into three year combined periods ----------------------------------
 
@@ -264,6 +268,8 @@ periods_short <- sub("/([A-Za-z0-9]+( [A-Za-z0-9]+)+)/", "-", unique(ncmp_data_3
 ```
 
 ```{r create_dfs}
+# Find prevalences before and after adjustment (population) ----------------------------
+
 # summarise unadjusted BMI categories by ethnicity
 
 bmi_category_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
@@ -288,6 +294,35 @@ bmi_category_adj_by_ethnicity <- ncmp_data_period_8 |>
 
 bmi_category_by_ethnicity = rbind(bmi_category_adj_by_ethnicity,
                                   bmi_category_unadj_by_ethnicity)
+
+# Find prevalences before and after adjustment (clinical) -----------------
+
+# repeat for clinical categories
+
+# summarise unadjusted BMI categories by ethnicity
+
+bmi_category_clinical_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+                                                           .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                                                           .by_denom = c(School_Year, Ethnicity_Hudda),
+                                                           .include_oo = F,
+                                                           .round_5 = T) |> 
+  mutate(bmi_adj = "Unadjusted")
+
+# summarise adjusted BMI categories by ethnicity
+
+bmi_category_clinical_adj_by_ethnicity <- ncmp_data_period_8 |> 
+  ncmp_summarise(.by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                 .by_denom = c(School_Year, Ethnicity_Hudda),
+                 .include_oo = F,
+                 .round_5 = T) |> 
+  mutate(bmi_adj = "Adjusted")
+
+# combine into one table
+
+bmi_category_clinical_by_ethnicity = rbind(bmi_category_clinical_adj_by_ethnicity,
+                                           bmi_category_clinical_unadj_by_ethnicity)
+
+# Find % children changed category (population) ---------------------------
 
 # calculate proportion of children within ethnicity/school year who fit into each BMI category/adjusted category combo
 bmi_category_change_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
@@ -326,7 +361,75 @@ adjusted_bmi_by_ethnicity_bmi_category <- ncmp_summarise(ncmp_data_period_8,
                                                          .round_5 = T) |> 
   mutate(category_change = case_when(BMI_Category == BMI_Category_Adjusted ~ F,
                                      .default = T))
+
+# Find % children changed category (clinical) -----------------------------
+
+
+# repeat for clinical category
+# calculate proportion of children within ethnicity/school year who fit into each BMI category/adjusted category combo
+bmi_category_clinical_change_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
+                                                   .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical, BMI_Category_Clinical_Adjusted),
+                                                   .by_denom = c(School_Year, Ethnicity_Hudda),
+                                                   .include_oo = F,
+                                                   .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category_Clinical == BMI_Category_Clinical_Adjusted ~ F,
+                                     .default = T))
+
+# add cols with number of "steps" and direction of change
+bmi_category_clinical_change_by_ethnicity <- bmi_category_clinical_change_by_ethnicity |> 
+  mutate(BMI_Category_Clinical = factor(BMI_Category_Clinical, levels = BMI_Category_Levels, ordered = T),
+         BMI_Category_Clinical_Adjusted = factor(BMI_Category_Clinical_Adjusted, levels = BMI_Category_Levels, ordered = T),
+         change_steps = as.numeric(unclass(BMI_Category_Clinical_Adjusted) - unclass(BMI_Category_Clinical)),
+         change_direction = case_when(change_steps < 0 ~ "Lighter",
+                                      change_steps > 0 ~ "Heavier",
+                                      change_steps == 0 ~ "No change"))
+
+# summarise to get % of all children in each ethnicity/school year who changed BMI category
+bmi_category_clinical_change_by_ethnicity_summary <- bmi_category_clinical_change_by_ethnicity |> 
+  filter(category_change == T) |> 
+  group_by(School_Year, Ethnicity_Hudda) |> 
+  summarise(count = sum(count),
+            denominator = mean(denominator)) |> 
+  ungroup() |> 
+  PHEindicatormethods::phe_proportion(x = count,
+                                      n = denominator,
+                                      multiplier = 100)
+
+# calculate proportion of children within ethncicity/school year/bmi category who fit into each adjusted category
+adjusted_bmi_by_ethnicity_bmi_category_clinical <- ncmp_summarise(ncmp_data_period_8,
+                                                         .by_count = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical, BMI_Category_Clinical_Adjusted),
+                                                         .by_denom = c(School_Year, Ethnicity_Hudda, BMI_Category_Clinical),
+                                                         .include_oo = F,
+                                                         .round_5 = T) |> 
+  mutate(category_change = case_when(BMI_Category_Clinical == BMI_Category_Clinical_Adjusted ~ F,
+                                     .default = T))
 ```
+
+# Introduction
+
+The National Child Measurement Program (NCMP) is crucial tool in monitoring prevalence of overweight and obesity in children in England. The height and weight of children in Reception (aged 4-5) and Year 6 (aged 10-11) are measured, and converted into a body mass index (BMI) score. Each child's weight status (underweight, healthy weight, overweight or obese) is then calculated with reference to the exclusively White British 1990 child growth reference population (UK90).
+
+At a population level, BMI categories are assigned as such:
+
+- **Underweight**: BMI less than the 2nd centile of the UK90 according to age and sex
+- **Healthy weight**: BMI between the 2nd and 85th centiles
+- **Overweight**: BMI between the 85th and 95th centiles
+- **Obese**: BMI on or above the 95th centile
+
+At an individual child level, BMI categories are assigned as such:
+
+- **Underweight**: BMI less than the 2nd centile of the UK90 according to age and sex
+- **Healthy weight**: BMI between the 2nd and 91st centiles
+- **Overweight**: BMI between the 91st and 98th centiles
+- **Obese**: BMI on or above the 98th centile
+
+Previous research has indicated that BMI is not an accurate measure of body fatness in some ethnic groups[^1][^2], particularly South Asian and Black children. Ethnic-specific BMI adjustments for South Asian and Black children to improve estimation of body fat have been developed[^3] but are not currently applied in analysis of NCMP data.
+
+[^1]: Claire M Nightingale, Alicja R Rudnicka, Chris G Owen, Derek G Cook, Peter H Whincup. (2010) Patterns of body size and adiposity among UK children of South Asian, black African–Caribbean and white European origin: Child Heart And health Study in England (CHASE Study). International Journal of Epidemiology, [https://doi.org/10.1093/ije/dyq180](https://doi.org/10.1093/ije/dyq180)
+
+[^2]: Nightingale CM, Rudnicka AR, Owen CG, Donin AS, Newton SL, Furness CA, et al. (2013) Are Ethnic and Gender Specific Equations Needed to Derive Fat Free Mass from Bioelectrical Impedance in Children of South Asian, Black African-Caribbean and White European Origin? Results of the Assessment of Body Composition in Children Study. PLoS ONE [https://doi.org/10.1371/journal.pone.0076426](https://doi.org/10.1371/journal.pone.0076426)
+
+[^3]: Hudda MT, Nightingale CM, Donin AS, et al. (2017) Body mass index adjustments to increase the validity of body fatness assessment in UK Black African and South Asian children. Int J Obes (Lond). [doi:10.1038/ijo.2017.75](doi:10.1038/ijo.2017.75)
 
 # Sankey
 
