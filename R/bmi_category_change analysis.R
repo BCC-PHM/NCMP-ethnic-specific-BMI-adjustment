@@ -272,3 +272,4 @@ plot_ly(type = "sankey",
                   font = list(size = 16, color = "black")) |> 
   layout(margin = list(t = 40)) |> 
   config(modeBarButtonsToRemove = c('zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'lasso2d', 'autoScale', 'resetScale'))
+

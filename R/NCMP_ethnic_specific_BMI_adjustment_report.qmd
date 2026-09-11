@@ -267,6 +267,28 @@ periods <- unique(ncmp_data_3_years_combined$Year)
 periods_short <- sub("/([A-Za-z0-9]+( [A-Za-z0-9]+)+)/", "-", unique(ncmp_data_3_years_combined$Year))
 ```
 
+```{r demographics}
+all_records <- nrow(ncmp_data_period_8)
+
+ncmp_data_period_8 |> 
+  count(Gender, School_Year, Ethnicity_Hudda) |> 
+  ungroup() |> 
+  group_by(Gender, School_Year) |> 
+  mutate(denom = sum(n),
+         pct = n/denom*100,
+         display = paste0(n, " (", round(pct, 1), "%)")) |> 
+  select(-denom, -n, -pct) |> 
+  arrange(School_Year) |> 
+  pivot_wider(names_from = c("Gender", "School_Year"),
+              values_from = "display") |> 
+  knitr::kable(col.names = c("Ethnicity", "Girls", "Boys", "Girls", "Boys")) |> 
+  kableExtra::add_header_above(c(" " = 1,
+                                 "Reception" = 2,
+                                 "Year 6" = 2))
+
+```
+
+
 ```{r create_dfs}
 # Find prevalences before and after adjustment (population) ----------------------------
 
