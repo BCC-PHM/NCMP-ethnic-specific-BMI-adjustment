@@ -76,6 +76,12 @@ black_bmi_adjustment_coefs <- tibble(Ethnicity_Hudda = rep("Black", times = 4),
                                      Intercept = black_bmi_adjustment_intercepts,
                                      Slope = black_bmi_adjustment_slopes)
 
+black_bmi_adjustment |> 
+  mutate(group = paste0(School_Year, ", ", Gender)) |> 
+  ggplot(aes(x = BMI_Score,
+             y = Adjusted_BMI_Score,
+             colour = group)) +
+  geom_line()
 
 # Put BMI adjustment for South Asian children into a table ----------------
 
