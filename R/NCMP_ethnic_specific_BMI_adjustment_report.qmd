@@ -20,6 +20,7 @@ library(readxl)
 library(plotly)
 library(PHEindicatormethods)
 library(bcctheme)
+library(ggiraph)
 
 BMI_Category_Levels = c("Underweight", "Healthy Weight", "Overweight", "Obese")
 bcc_colours <- unname(bcc_cols())
@@ -267,30 +268,62 @@ periods <- unique(ncmp_data_3_years_combined$Year)
 periods_short <- sub("/([A-Za-z0-9]+( [A-Za-z0-9]+)+)/", "-", unique(ncmp_data_3_years_combined$Year))
 ```
 
-```{r demographics}
-all_records <- nrow(ncmp_data_period_8)
-
-ncmp_data_period_8 |> 
-  count(Gender, School_Year, Ethnicity_Hudda) |> 
-  ungroup() |> 
-  group_by(Gender, School_Year) |> 
-  mutate(denom = sum(n),
-         pct = n/denom*100,
-         display = paste0(n, " (", round(pct, 1), "%)")) |> 
-  select(-denom, -n, -pct) |> 
-  arrange(School_Year) |> 
-  pivot_wider(names_from = c("Gender", "School_Year"),
-              values_from = "display") |> 
-  knitr::kable(col.names = c("Ethnicity", "Girls", "Boys", "Girls", "Boys")) |> 
-  kableExtra::add_header_above(c(" " = 1,
-                                 "Reception" = 2,
-                                 "Year 6" = 2))
-
-```
-
-
 ```{r create_dfs}
 # Find prevalences before and after adjustment (population) ----------------------------
+
+# summarise unadjusted BMI categories by school year
+
+bmi_category_unadj_by_school_year <- ncmp_summarise(ncmp_data_period_8,
+                                                  .by_count = c(School_Year, BMI_Category),
+                                                  .by_denom = c(School_Year),
+                                                  .include_oo = T,
+                                                  .round_5 = T) |> 
+  mutate(bmi_adj = "Unadjusted BMI")
+
+# summarise adjusted BMI categories by ethnicity
+
+bmi_category_adj_by_school_year <- ncmp_data_period_8 |> 
+  select(-BMI_Category) |> 
+  rename(BMI_Category = BMI_Category_Adjusted) |> 
+  ncmp_summarise(.by_count = c(School_Year, BMI_Category),
+                 .by_denom = c(School_Year),
+                 .include_oo = T,
+                 .round_5 = T) |> 
+  mutate(bmi_adj = "Adjusted BMI")
+
+# combine into one table
+
+bmi_category_by_school_year = rbind(bmi_category_adj_by_school_year,
+                                  bmi_category_unadj_by_school_year)
+
+# pull out overall overweight/obese % before and after adjustment
+oo_r_unadj <- bmi_category_by_school_year |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_unadj <- bmi_category_by_school_year |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_r_adj <- bmi_category_by_school_year |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_adj <- bmi_category_by_school_year |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese") |> 
+  pull(pct) |> 
+  round(1)
 
 # summarise unadjusted BMI categories by ethnicity
 
@@ -299,7 +332,7 @@ bmi_category_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
                                                   .by_denom = c(School_Year, Ethnicity_Hudda),
                                                   .include_oo = T,
                                                   .round_5 = T) |> 
-  mutate(bmi_adj = "Unadjusted")
+  mutate(bmi_adj = "Unadjusted BMI")
 
 # summarise adjusted BMI categories by ethnicity
 
@@ -310,12 +343,77 @@ bmi_category_adj_by_ethnicity <- ncmp_data_period_8 |>
                  .by_denom = c(School_Year, Ethnicity_Hudda),
                  .include_oo = T,
                  .round_5 = T) |> 
-  mutate(bmi_adj = "Adjusted")
+  mutate(bmi_adj = "Adjusted BMI")
 
 # combine into one table
 
 bmi_category_by_ethnicity = rbind(bmi_category_adj_by_ethnicity,
                                   bmi_category_unadj_by_ethnicity)
+
+# pull out overweight/obese % before and after adjustment
+oo_r_unadj_b <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "Black") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_unadj_b <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "Black") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_r_adj_b <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "Black") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_adj_b <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "Black") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_r_unadj_sa <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "South Asian") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_unadj_sa <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Unadjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "South Asian") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_r_adj_sa <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Reception",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "South Asian") |> 
+  pull(pct) |> 
+  round(1)
+
+oo_y6_adj_sa <- bmi_category_by_ethnicity |> 
+  filter(bmi_adj == "Adjusted BMI",
+         School_Year == "Year 6",
+         BMI_Category == "Overweight/Obese",
+         Ethnicity_Hudda == "South Asian") |> 
+  pull(pct) |> 
+  round(1)
 
 # Find prevalences before and after adjustment (clinical) -----------------
 
@@ -328,7 +426,7 @@ bmi_category_clinical_unadj_by_ethnicity <- ncmp_summarise(ncmp_data_period_8,
                                                            .by_denom = c(School_Year, Ethnicity_Hudda),
                                                            .include_oo = F,
                                                            .round_5 = T) |> 
-  mutate(bmi_adj = "Unadjusted")
+  mutate(bmi_adj = "Unadjusted BMI")
 
 # summarise adjusted BMI categories by ethnicity
 
@@ -337,7 +435,7 @@ bmi_category_clinical_adj_by_ethnicity <- ncmp_data_period_8 |>
                  .by_denom = c(School_Year, Ethnicity_Hudda),
                  .include_oo = F,
                  .round_5 = T) |> 
-  mutate(bmi_adj = "Adjusted")
+  mutate(bmi_adj = "Adjusted BMI")
 
 # combine into one table
 
@@ -438,7 +536,7 @@ At a population level, BMI categories are assigned as such:
 - **Overweight**: BMI between the 85th and 95th centiles
 - **Obese**: BMI on or above the 95th centile
 
-At an individual child level, BMI categories are assigned as such:
+At a clinical level, BMI categories are assigned as such:
 
 - **Underweight**: BMI less than the 2nd centile of the UK90 according to age and sex
 - **Healthy weight**: BMI between the 2nd and 91st centiles
@@ -452,6 +550,229 @@ Previous research has indicated that BMI is not an accurate measure of body fatn
 [^2]: Nightingale CM, Rudnicka AR, Owen CG, Donin AS, Newton SL, Furness CA, et al. (2013) Are Ethnic and Gender Specific Equations Needed to Derive Fat Free Mass from Bioelectrical Impedance in Children of South Asian, Black African-Caribbean and White European Origin? Results of the Assessment of Body Composition in Children Study. PLoS ONE [https://doi.org/10.1371/journal.pone.0076426](https://doi.org/10.1371/journal.pone.0076426)
 
 [^3]: Hudda MT, Nightingale CM, Donin AS, et al. (2017) Body mass index adjustments to increase the validity of body fatness assessment in UK Black African and South Asian children. Int J Obes (Lond). [doi:10.1038/ijo.2017.75](doi:10.1038/ijo.2017.75)
+
+# Demographics
+```{r demographics}
+all_records <- nrow(ncmp_data_period_8)
+
+reception_count <- ncmp_data_period_8 |> 
+  count(School_Year) |> 
+  filter(School_Year == "Reception") |> 
+  pull(n)
+
+y6_count <- ncmp_data_period_8 |> 
+  count(School_Year) |> 
+  filter(School_Year == "Year 6") |> 
+  pull(n)
+
+school_year_ethnicity_gender_table <- ncmp_data_period_8 |> 
+  count(Gender, School_Year, Ethnicity_Hudda) |> 
+  ungroup() |> 
+  group_by(Gender, School_Year) |> 
+  mutate(denom = sum(n),
+         pct = n/denom*100,
+         display = paste0(n, " (", round(pct, 1), "%)")) |> 
+  select(-denom, -n, -pct) |> 
+  arrange(School_Year) |> 
+  pivot_wider(names_from = c("Gender", "School_Year"),
+              values_from = "display") |> 
+  knitr::kable(col.names = c("Ethnicity", "Girls", "Boys", "Girls", "Boys")) |> 
+  kableExtra::add_header_above(c(" " = 1,
+                                 "Reception" = 2,
+                                 "Year 6" = 2))
+
+```
+
+A total of `r all_records` records were included in the analysis - `r reception_count` Reception children (aged 4-5 years) and `r y6_count` Year 6 children (aged 10-11 years). Included children were those with valid measurements who were measured in the three year period `r periods[8]`.
+
+Children were grouped according to the ethnicity recorded in their NCMP measurement, using the following ethnic groupings:
+
+- White ('White British', 'White Irish' or 'any other White background')
+- Black ('Black African' 'Black Caribbean' or 'any other Black background')
+- South Asian ('Indian', 'Pakistani' or 'Bangladeshi')
+- Mixed and Other ('Mixed Ethnicity', 'any other ethnic group', 'any other Asian background' or 'Chinese')
+- Unknown ('Not stated' or 'NA')
+
+```{r demographics_table}
+school_year_ethnicity_gender_table
+```
+
+# Methods
+
+Unadjusted BMI was used to calculate the overall and ethnic-specific prevalence of overweight and obesity. Prevalence was calculated using both population-monitoring and clinical thresholds. 
+
+BMI was then adjusted for children from South Asian and Black backgrounds, using ethnic-specific BMI adjustments derived by Hudda et al.[^3]  
+
+- For South Asian children, BMI is adjusted by a constant term of +1.12kg/m2 for boys and +1.07kg/m2 for girls.
+- For Black children, BMI adjustment varies by age, sex and BMI, with the largest adjustments in younger children with higher BMI. These adjustments were applied using a regression model extrapolated from a table of measurements provided by Hudda et al.
+ 
+After adjustment, BMI was recategorised using the LMS growth tool. Again, prevalence of overweight and obesity was calculated using both population-monitoring and clinical thresholds.
+
+Unless otherwise stated, the presented results were calculated using population-monitoring thresholds.
+
+# Results
+
+## Overall prevalence
+
+When BMI is not adjusted, a total of `r oo_r_unadj`% of Reception children and `r oo_y6_unadj`% of Year 6 children are classed as overweight or obese. Followig BMI adjustment in Black and South Asian children, these proportions rise to `r oo_r_adj`% of Reception children and `r oo_y6_adj`% of Year 6 children.
+
+::: panel-tabset
+
+## Reception
+
+```{r overall_prevalence_r}
+graph <- bmi_category_by_school_year|>
+  filter(School_Year == "Reception",
+         BMI_Category != "Overweight/Obese") |> 
+  mutate(BMI_Category = factor(BMI_Category,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted BMI", "Unadjusted BMI")),
+         tooltip = paste0(bmi_adj, "\n",
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
+             fill = bmi_adj)) +
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                    xmax = upper_ci),
+                position = position_dodge(0.9),
+                width = 0.2) +
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
+
+girafe(ggobj = graph)
+```
+
+## Year 6
+
+```{r overall_prevalence_y6}
+graph <- bmi_category_by_school_year|>
+  filter(School_Year == "Year 6",
+         BMI_Category != "Overweight/Obese") |> 
+  mutate(BMI_Category = factor(BMI_Category,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted BMI", "Unadjusted BMI")),
+         tooltip = paste0(bmi_adj, "\n",
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
+             fill = bmi_adj)) +
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                    xmax = upper_ci),
+                position = position_dodge(0.9),
+                width = 0.2) +
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
+
+girafe(ggobj = graph)
+```
+:::
+
+## Ethnic-specific prevalence
+
+Prior to adjustment, `r oo_r_unadj_b`% of Black Reception children and `r oo_y6_unadj_b`% of Black Year 6 children are classed as overweight or obese. After adjustment, these values decrease to `r oo_r_adj_b`% and `r oo_y6_adj_b`% respectively.
+
+In South Asian children, before adjustment `r oo_r_unadj_sa`% of Reception children and `r oo_y6_unadj_sa`% of Year 6 children are classed as overweight or obese. Following adjustment, prevalence of overweight and obesity increases to `r oo_r_adj_sa`% and `r oo_y6_adj_sa`%.
+
+::: panel-tabset
+
+## Reception
+
+```{r ethnic_prevalence_r}
+graph <- bmi_category_by_ethnicity |>
+  filter(School_Year == "Reception",
+         BMI_Category != "Overweight/Obese",
+         Ethnicity_Hudda %in% c("Black", "South Asian")) |> 
+  mutate(BMI_Category = factor(BMI_Category,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted BMI", "Unadjusted BMI")),
+         tooltip = paste0(bmi_adj, "\n",
+                          Ethnicity_Hudda, "\n", 
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
+             fill = bmi_adj)) +
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                xmax = upper_ci),
+                position = position_dodge(0.9),
+                width = 0.2) +
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  facet_wrap(~Ethnicity_Hudda) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
+
+girafe(ggobj = graph)
+```
+
+## Year 6
+
+```{r ethnic_prevalence_y6}
+graph <- bmi_category_by_ethnicity |>
+  filter(School_Year == "Year 6",
+         BMI_Category != "Overweight/Obese",
+         Ethnicity_Hudda %in% c("Black", "South Asian")) |> 
+  mutate(BMI_Category = factor(BMI_Category,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted BMI", "Unadjusted BMI")),
+         tooltip = paste0(bmi_adj, "\n",
+                          Ethnicity_Hudda, "\n", 
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
+             fill = bmi_adj)) +
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                xmax = upper_ci),
+                position = position_dodge(0.9),
+                width = 0.2) +
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  facet_wrap(~Ethnicity_Hudda) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
+
+girafe(ggobj = graph)
+```
+:::
 
 # Sankey
 
