@@ -2,6 +2,7 @@ library(tidyverse)
 library(PHEindicatormethods)
 library(plotly)
 library(bcctheme)
+library(ggiraph)
 
 BMI_Category_Levels <- c("Underweight", "Healthy Weight", "Overweight", "Obese")
 bcc_colours <- unname(bcc_cols())
@@ -12,6 +13,63 @@ BMI_Category_colours <- c("Underweight" = bcc_colours[6],
 
 
 # Find prevalences before and after adjustment (population) ----------------------------
+
+# summarise unadjusted BMI categories by school year
+
+bmi_category_unadj_by_school_year <- ncmp_summarise(ncmp_data_period_8,
+                                                    .by_count = c(School_Year, BMI_Category),
+                                                    .by_denom = c(School_Year),
+                                                    .include_oo = T,
+                                                    .round_5 = T) |> 
+  mutate(bmi_adj = "Unadjusted")
+
+# summarise adjusted BMI categories by ethnicity
+
+bmi_category_adj_by_school_year <- ncmp_data_period_8 |> 
+  select(-BMI_Category) |> 
+  rename(BMI_Category = BMI_Category_Adjusted) |> 
+  ncmp_summarise(.by_count = c(School_Year, BMI_Category),
+                 .by_denom = c(School_Year),
+                 .include_oo = T,
+                 .round_5 = T) |> 
+  mutate(bmi_adj = "Adjusted")
+
+# combine into one table
+
+bmi_category_by_school_year = rbind(bmi_category_adj_by_school_year,
+                                    bmi_category_unadj_by_school_year)
+
+
+graph <- bmi_category_by_school_year|>
+  filter(School_Year == "Year 6",
+         BMI_Category != "Overweight/Obese") |> 
+  mutate(BMI_Category = factor(BMI_Category,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted", "Unadjusted")),
+         tooltip = paste0(bmi_adj, "\n",
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
+             fill = bmi_adj)) +
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                    xmax = upper_ci),
+                position = position_dodge(0.9),
+                width = 0.2) +
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
+
+girafe(ggobj = graph)
 
 # summarise unadjusted BMI categories by ethnicity
 
@@ -38,54 +96,39 @@ bmi_category_adj_by_ethnicity <- ncmp_data_period_8 |>
 bmi_category_by_ethnicity = rbind(bmi_category_adj_by_ethnicity,
                                   bmi_category_unadj_by_ethnicity)
 
-bmi_category_by_ethnicity |>
+graph <- bmi_category_by_ethnicity |>
   filter(School_Year == "Year 6",
-         BMI_Category != "Overweight/Obese") |> 
+         BMI_Category != "Overweight/Obese",
+         Ethnicity_Hudda %in% c("Black", "South Asian")) |> 
   mutate(BMI_Category = factor(BMI_Category,
-                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight"))) |> 
-  ggplot(aes(x = pct,
-             y = bmi_adj,
-             fill = BMI_Category)) +
-  geom_col() +
-  scale_fill_manual(values = c(bcc_colours[4:2], bcc_colours[5])) +
-  facet_wrap(~Ethnicity_Hudda)
-
-bmi_category_by_ethnicity |>
-  filter(School_Year == "Reception",
-         BMI_Category == "Overweight/Obese") |> 
-  ggplot(aes(x = Ethnicity_Hudda,
-             y = pct,
+                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight")),
+         bmi_adj = factor(bmi_adj,
+                          levels = c("Adjusted", "Unadjusted")),
+         tooltip = paste0(bmi_adj, "\n",
+                          Ethnicity_Hudda, "\n", 
+                          BMI_Category, "\n",
+                          round(pct, 1), "% (", round(lower_ci, 1), " - ", round(upper_ci, 1), "%)", "\n")) |> 
+  ggplot(aes(y = BMI_Category,
+             x = pct,
              fill = bmi_adj)) +
-  geom_col(position = "dodge") +
-  geom_errorbar(aes(ymin = lower_ci,
-                    ymax = upper_ci),
-                position = position_dodge(width = 0.9),
+  geom_col_interactive(aes(tooltip = tooltip),
+                       position = "dodge") +
+  geom_errorbar(aes(xmin = lower_ci,
+                xmax = upper_ci),
+                position = position_dodge(0.9),
                 width = 0.2) +
-  scale_fill_manual(values = bcc_colours[1:2])
+  scale_fill_manual(values = c(bcc_colours[2], bcc_colours[4])) +
+  facet_wrap(~Ethnicity_Hudda) +
+  theme_minimal() +
+  scale_x_continuous(expand = c(0,0),
+                     label = scales::label_percent(scale = 1),
+                     name = "Percentage of children") +
+  scale_y_discrete(name = "BMI Category") +
+  guides(fill = guide_legend(reverse = T,
+                             title = ""),
+         colour = "none")
 
-bmi_category_by_ethnicity |>
-  filter(School_Year == "Year 6",
-         BMI_Category != "Overweight/Obese") |> 
-  mutate(BMI_Category = factor(BMI_Category,
-                               levels = c("Obese", "Overweight", "Healthy Weight", "Underweight"))) |> 
-  ggplot(aes(x = BMI_Category,
-             y = pct,
-             fill = bmi_adj)) +
-  geom_col(position = "dodge") +
-  geom_errorbar(aes(ymin = lower_ci,
-                    ymax = upper_ci),
-                position = position_dodge(width = 0.9),
-                width = 0.2) +
-  scale_fill_manual(values = c(bcc_colours[4:2], bcc_colours[5])) +
-  facet_wrap(~Ethnicity_Hudda)
-
-bmi_category_by_ethnicity |> 
-  pivot_wider(names_from = bmi_adj,
-              values_from = c(pct, lower_ci, upper_ci, count)) |> 
-  mutate(pct_diff = pct_Adjusted - pct_Unadjusted,
-         count_diff = count_Adjusted - count_Unadjusted) |> 
-  View()
-
+girafe(ggobj = graph)
 
 # Find prevalences before and after adjustment (clinical) -----------------
 
