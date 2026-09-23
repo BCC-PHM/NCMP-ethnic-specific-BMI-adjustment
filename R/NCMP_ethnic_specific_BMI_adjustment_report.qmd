@@ -192,6 +192,84 @@ bmi_adj_sankey <- function(.data,
     layout(margin = list(t = 40)) |> 
     config(modeBarButtonsToRemove = c('zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'lasso2d', 'autoScale', 'resetScale'))
 }
+
+bmi_adj_sankey_clinical <- function(.data,
+                           .Ethnicity_Hudda,
+                           .School_Year){
+  
+  sankey_links <- .data |>
+    dplyr::filter(Ethnicity_Hudda == .Ethnicity_Hudda,
+           School_Year == .School_Year) |> 
+    dplyr::select(BMI_Category_Clinical, BMI_Category_Clinical_Adjusted, count, pct, lower_ci, upper_ci) |>
+    dplyr::rename(source = BMI_Category_Clinical,
+           target = BMI_Category_Clinical_Adjusted,
+           value  = count) |>
+    dplyr::mutate(
+      linkgroup = source,
+      linklabel = dplyr::case_when(
+        source == "Underweight"     & target == "Underweight"     ~ "Remained underweight",
+        source == "Healthy Weight"  & target == "Healthy Weight"  ~ "Remained healthy weight",
+        source == "Overweight"      & target == "Overweight"      ~ "Remained overweight",
+        source == "Obese"           & target == "Obese"           ~ "Remained obese",
+        .default = paste0("Moved to ", str_to_lower(target))),
+      source = paste0(source, "_unadj"),
+      target = paste0(target, "_adj"),
+      colour = dplyr::case_when(
+        linkgroup == "Underweight"    ~ paste0(BMI_Category_colours["Underweight"], "99"),
+        linkgroup == "Healthy Weight" ~ paste0(BMI_Category_colours["Healthy Weight"], "99"),
+        linkgroup == "Overweight"     ~ paste0(BMI_Category_colours["Overweight"], "99"),
+        linkgroup == "Obese"          ~ paste0(BMI_Category_colours["Obese"], "99"))) |>
+    dplyr::filter(value > 7)
+  
+  # Explicit node order (left then right)
+  ordered_nodes <- c("Underweight_unadj", "Healthy Weight_unadj", "Overweight_unadj", "Obese_unadj",
+                     "Underweight_adj", "Healthy Weight_adj", "Overweight_adj", "Obese_adj")
+  
+  # Build nodes with consistent labels and colours
+  sankey_nodes <- tibble::tibble(name = ordered_nodes,
+                         # category without suffix, for color mapping
+                         nodegroup = sub("_(unadj|adj)$", "", ordered_nodes),
+                         colour = dplyr::case_when(
+                           nodegroup == "Underweight"    ~ BMI_Category_colours["Underweight"],
+                           nodegroup == "Healthy Weight" ~ BMI_Category_colours["Healthy Weight"],
+                           nodegroup == "Overweight"     ~ BMI_Category_colours["Overweight"],
+                           nodegroup == "Obese"          ~ BMI_Category_colours["Obese"]))
+  
+  # Labels for nodes
+  node_labels <- sub("_(unadj|adj)$", "", sankey_nodes$name)
+  
+  # Map links to node indices based on explicit node order
+  sankey_links$IDsource <- match(sankey_links$source, sankey_nodes$name) - 1
+  sankey_links$IDtarget <- match(sankey_links$target, sankey_nodes$name) - 1
+  
+  # Plot
+  plotly::plot_ly(type = "sankey",
+          arrangement = "snap",
+          orientation = "h",
+          node = list(label = node_labels,          # length 8; no recycling
+                      color = sankey_nodes$colour,
+                      pad = 15,
+                      thickness = 20,
+                      line = list(color = "black", width = 0.5),
+                      hoverinfo = "none"),
+          link = list(source = sankey_links$IDsource,
+                      target = sankey_links$IDtarget,
+                      value  = sankey_links$value,
+                      label  = sankey_links$linklabel,
+                      color  = sankey_links$colour,
+                      customdata = sprintf("%.1f%% (%.1f%% - %.1f%%)", sankey_links$pct, sankey_links$lower_ci, sankey_links$upper_ci),
+                      hovertemplate = paste0("%{label}<br>%{customdata}<extra></extra>"))) |> 
+    add_annotations(x = 0, y = 1.01, xref = "paper", yref = "paper",
+                    text = "Unadjusted BMI score", showarrow = FALSE,
+                    xanchor = "left", yanchor = "bottom",
+                    font = list(size = 16, color = "black")) |> 
+    add_annotations(x = 1, y = 1.01, xref = "paper", yref = "paper",
+                    text = "Adjusted BMI score", showarrow = FALSE,
+                    xanchor = "right", yanchor = "bottom",
+                    font = list(size = 16, color = "black")) |> 
+    layout(margin = list(t = 40)) |> 
+    config(modeBarButtonsToRemove = c('zoom', 'pan', 'select', 'zoomIn', 'zoomOut', 'lasso2d', 'autoScale', 'resetScale'))
+}
 ```
 
 ```{r data_import}
@@ -693,7 +771,7 @@ girafe(ggobj = graph)
 
 Prior to adjustment, `r oo_r_unadj_b`% of Black Reception children and `r oo_y6_unadj_b`% of Black Year 6 children are classed as overweight or obese. After adjustment, these values decrease to `r oo_r_adj_b`% and `r oo_y6_adj_b`% respectively.
 
-In South Asian children, before adjustment `r oo_r_unadj_sa`% of Reception children and `r oo_y6_unadj_sa`% of Year 6 children are classed as overweight or obese. Following adjustment, prevalence of overweight and obesity increases to `r oo_r_adj_sa`% and `r oo_y6_adj_sa`%.
+In South Asian children, before adjustment `r oo_r_unadj_sa`% of Reception children and `r oo_y6_unadj_sa`% of Year 6 children are classed as overweight or obese. Following adjustment, prevalence of overweight and obesity increases to `r oo_r_adj_sa`% and `r oo_y6_adj_sa`% respectively.
 
 ::: panel-tabset
 
@@ -774,35 +852,149 @@ girafe(ggobj = graph)
 ```
 :::
 
-# Sankey
+## Weight status change
+
+```{r weight_status_change_figures}
+
+# Black 
+wsc_b_r <- bmi_category_clinical_change_by_ethnicity_summary |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Reception") |>
+  pull(value) |> 
+  round(1)
+
+wsc_b_y6 <- bmi_category_clinical_change_by_ethnicity_summary |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Year 6") |>
+  pull(value) |> 
+  round(1)
+
+wsc_b_r_ov_hw <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Reception",
+         BMI_Category_Clinical == "Overweight",
+         BMI_Category_Clinical_Adjusted == "Healthy Weight") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_b_y6_ov_hw <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Year 6",
+         BMI_Category_Clinical == "Overweight",
+         BMI_Category_Clinical_Adjusted == "Healthy Weight") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_b_r_ob_ov <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Reception",
+         BMI_Category_Clinical == "Obese",
+         BMI_Category_Clinical_Adjusted == "Overweight") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_b_y6_ob_ov <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "Black",
+         School_Year == "Year 6",
+         BMI_Category_Clinical == "Obese",
+         BMI_Category_Clinical_Adjusted == "Overweight") |>
+  pull(pct) |> 
+  round(1)
+
+# South Asian
+
+wsc_sa_r <- bmi_category_clinical_change_by_ethnicity_summary |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Reception") |>
+  pull(value) |> 
+  round(1)
+
+wsc_sa_y6 <- bmi_category_clinical_change_by_ethnicity_summary |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Year 6") |>
+  pull(value) |> 
+  round(1)
+
+wsc_sa_r_hw_ov <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Reception",
+         BMI_Category_Clinical == "Healthy Weight",
+         BMI_Category_Clinical_Adjusted == "Overweight") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_sa_y6_hw_ov <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Year 6",
+         BMI_Category_Clinical == "Healthy Weight",
+         BMI_Category_Clinical_Adjusted == "Overweight") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_sa_r_ov_ob <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Reception",
+         BMI_Category_Clinical == "Overweight",
+         BMI_Category_Clinical_Adjusted == "Obese") |>
+  pull(pct) |> 
+  round(1)
+
+wsc_sa_y6_ov_ob <- adjusted_bmi_by_ethnicity_bmi_category_clinical |> 
+  filter(Ethnicity_Hudda == "South Asian",
+         School_Year == "Year 6",
+         BMI_Category_Clinical == "Overweight",
+         BMI_Category_Clinical_Adjusted == "Obese") |>
+  pull(pct) |> 
+  round(1)
+```
+
+Note: as the values in this section relate to individual children, clinical monitoring thresholds have been used to calculate weight status.
+
+`r wsc_b_r`% of Reception children and `r wsc_b_y6`% of Year 6 children from Black backgrounds were classified as having a heavier weight status after ethnic-specific BMI adjustment. More specifically, `r wsc_b_r_ov_hw`% and `r wsc_b_y6_ov_hw`% of Reception and Year 6 children respectively were reclassified from 'Overweight' to 'Healthy Weight'. Similarly, `r wsc_b_r_ob_ov`% and `r wsc_b_y6_ob_ov`% of Reception and Year 6 children respectively were reclassified from 'Obese' to 'Overweight'.
+
+`r wsc_sa_r`% of Reception children and `r wsc_sa_y6`% of Year 6 children from South Asian backgrounds were classified as having a heavier weight status after ethnic-specific BMI adjustment. More specifically, `r wsc_sa_r_hw_ov`% and `r wsc_sa_y6_hw_ov`% of Reception and Year 6 children respectively were reclassified from 'Healthy Weight' to 'Overweight'. Similarly, `r wsc_sa_r_ov_ob`% and `r wsc_sa_y6_ov_ob`% of Reception and Year 6 children respectively were reclassified from 'Overweight' to 'Obese'.
+
+Further detail on movement between BMI categories before and after BMI adjustment is shown in the flowcharts below.
 
 ::: panel-tabset
-## Black, Reception
+## Black
+
+::: panel-tabset
+
+## Reception
 
 ```{r sankey_black_r}
-bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+bmi_adj_sankey_clinical(.data = adjusted_bmi_by_ethnicity_bmi_category_clinical,
                .Ethnicity_Hudda = "Black",
                .School_Year = "Reception")
 ```
 
-## Black, Year 6
+## Year 6
 ```{r sankey_black_y6}
-bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+bmi_adj_sankey_clinical(.data = adjusted_bmi_by_ethnicity_bmi_category_clinical,
                .Ethnicity_Hudda = "Black",
                .School_Year = "Year 6")
 ```
 
-## South Asian, Reception
+:::
+
+## South Asian
+
+::: panel-tabset
+
+## Reception
 ```{r sankey_south_asian_r}
-bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+bmi_adj_sankey_clinical(.data = adjusted_bmi_by_ethnicity_bmi_category_clinical,
                .Ethnicity_Hudda = "South Asian",
                .School_Year = "Reception")
 ```
 
-## South Asian, Reception
+## Year 6
 ```{r sankey_south_asian_y6}
-bmi_adj_sankey(.data = adjusted_bmi_by_ethnicity_bmi_category,
+bmi_adj_sankey_clinical(.data = adjusted_bmi_by_ethnicity_bmi_category_clinical,
                .Ethnicity_Hudda = "South Asian",
                .School_Year = "Year 6")
 ```
+:::
+
 :::
