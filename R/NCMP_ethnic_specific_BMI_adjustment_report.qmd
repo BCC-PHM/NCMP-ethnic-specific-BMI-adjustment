@@ -692,7 +692,7 @@ Unless otherwise stated, the presented results were calculated using population-
 
 ## Overall prevalence
 
-When BMI is not adjusted, a total of `r oo_r_unadj`% of Reception children and `r oo_y6_unadj`% of Year 6 children are classed as overweight or obese. Followig BMI adjustment in Black and South Asian children, these proportions rise to `r oo_r_adj`% of Reception children and `r oo_y6_adj`% of Year 6 children.
+When BMI is not adjusted, a total of `r oo_r_unadj`% of Reception children and `r oo_y6_unadj`% of Year 6 children are classed as overweight or obese. Following BMI adjustment in Black and South Asian children, these proportions rise to `r oo_r_adj`% of Reception children and `r oo_y6_adj`% of Year 6 children.
 
 ::: panel-tabset
 
@@ -950,7 +950,7 @@ wsc_sa_y6_ov_ob <- adjusted_bmi_by_ethnicity_bmi_category_clinical |>
 
 Note: as the values in this section relate to individual children, clinical monitoring thresholds have been used to calculate weight status.
 
-`r wsc_b_r`% of Reception children and `r wsc_b_y6`% of Year 6 children from Black backgrounds were classified as having a heavier weight status after ethnic-specific BMI adjustment. More specifically, `r wsc_b_r_ov_hw`% and `r wsc_b_y6_ov_hw`% of Reception and Year 6 children respectively were reclassified from 'Overweight' to 'Healthy Weight'. Similarly, `r wsc_b_r_ob_ov`% and `r wsc_b_y6_ob_ov`% of Reception and Year 6 children respectively were reclassified from 'Obese' to 'Overweight'.
+`r wsc_b_r`% of Reception children and `r wsc_b_y6`% of Year 6 children from Black backgrounds were classified as having a lighter weight status after ethnic-specific BMI adjustment. More specifically, `r wsc_b_r_ov_hw`% and `r wsc_b_y6_ov_hw`% of Reception and Year 6 children respectively were reclassified from 'Overweight' to 'Healthy Weight'. Similarly, `r wsc_b_r_ob_ov`% and `r wsc_b_y6_ob_ov`% of Reception and Year 6 children respectively were reclassified from 'Obese' to 'Overweight'.
 
 `r wsc_sa_r`% of Reception children and `r wsc_sa_y6`% of Year 6 children from South Asian backgrounds were classified as having a heavier weight status after ethnic-specific BMI adjustment. More specifically, `r wsc_sa_r_hw_ov`% and `r wsc_sa_y6_hw_ov`% of Reception and Year 6 children respectively were reclassified from 'Healthy Weight' to 'Overweight'. Similarly, `r wsc_sa_r_ov_ob`% and `r wsc_sa_y6_ov_ob`% of Reception and Year 6 children respectively were reclassified from 'Overweight' to 'Obese'.
 
